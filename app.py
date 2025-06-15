@@ -170,6 +170,10 @@ def init_db():
 def index():
     return render_template('index.html')
 
+@app.route('/mision')
+def mision():
+    return render_template('mision.html')
+
 @app.route('/survey')
 def survey():
     conn = get_db_connection()

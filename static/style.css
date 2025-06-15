@@ -67,6 +67,16 @@ body {
   font-size: 0.8em;
 }
 
+/* Navegación móvil horizontal */
+.navbar-nav {
+  flex-direction: row !important;
+}
+
+.navbar-nav .nav-link {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .container {
@@ -80,6 +90,28 @@ body {
 
   .display-5 {
     font-size: 1.5rem;
+  }
+
+  /* Navegación móvil más compacta */
+  .navbar-nav .nav-link {
+    font-size: 0.8rem;
+    padding: 0.5rem 0.75rem !important;
+  }
+
+  .navbar-brand {
+    font-size: 1.2rem;
+  }
+
+  /* Ajustar espaciado en móvil */
+  .card-body ul {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .navbar-nav .nav-link {
+    font-size: 0.75rem;
+    padding: 0.4rem 0.6rem !important;
   }
 }
 
