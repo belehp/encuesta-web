@@ -175,30 +175,103 @@ def survey():
     
     return render_template('survey.html', questions=questions)
 
+@app.route('/api/submit-survey', methods=['POST'])
+def submit_survey():
+    data = request.json
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        user_id = None
+        puntaje_total = 0
+        
+        # Calcular puntaje total primero
+        for question_id, option_id in data['responses'].items():
+            cur.execute("SELECT puntaje FROM options WHERE id = ?", (int(option_id),))
+            result = cur.fetchone()
+            if result:
+                puntaje_total += result['puntaje']
+        
+        # Determinar clasificación
+        if puntaje_total <= 5:
+            clasificacion = 'Leve'
+        elif puntaje_total <= 11:
+            clasificacion = 'Moderado'
+        else:
+            clasificacion = 'Grave'
+        
+        # CREAR USUARIO SIEMPRE (anónimo o no)
+        if data.get('is_anonymous'):
+            # Para encuestas anónimas, usar datos genéricos
+            cur.execute("""
+                INSERT INTO users (nombre, email, edad, sexo, puntaje_total, clasificacion, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                "Anónimo",
+                "anonimo@encuesta.com",
+                0,  # Edad genérica
+                "Prefiero no decirlo",  # Género para anónimos
+                puntaje_total,
+                clasificacion,
+                datetime.now()
+            ))
+            user_id = cur.lastrowid
+        else:
+            # Para encuestas con datos personales
+            cur.execute("""
+                INSERT INTO users (nombre, email, edad, sexo, puntaje_total, clasificacion, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                data['nombre'],
+                data['email'],
+                data['edad'],
+                data['sexo'],
+                puntaje_total,
+                clasificacion,
+                datetime.now()
+            ))
+            user_id = cur.lastrowid
+        
+        # Insertar respuestas con puntajes
+        for question_id, option_id in data['responses'].items():
+            # Obtener puntaje de la opción
+            cur.execute("SELECT puntaje FROM options WHERE id = ?", (int(option_id),))
+            result = cur.fetchone()
+            puntaje_respuesta = result['puntaje'] if result else 0
+            
+            cur.execute("""
+                INSERT INTO responses (user_id, pregunta_id, respuesta, puntaje)
+                VALUES (?, ?, ?, ?)
+            """, (user_id, int(question_id), int(option_id), puntaje_respuesta))
+        
+        conn.commit()
+        print(f"✅ Encuesta guardada - Usuario: {user_id}, Puntaje: {puntaje_total}, Clasificación: {clasificacion}")
+        return jsonify({
+            'success': True, 
+            'puntaje': puntaje_total, 
+            'clasificacion': clasificacion
+        })
+        
+    except Exception as e:
+        conn.rollback()
+        print(f"❌ Error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
 @app.route('/dashboard')
 def dashboard():
     conn = get_db_connection()
     cur = conn.cursor()
     
     try:
-        # Total de ENCUESTAS (no respuestas individuales)
-        # Contar usuarios únicos que completaron la encuesta
-        cur.execute("""
-            SELECT COUNT(DISTINCT CASE WHEN user_id IS NOT NULL THEN user_id END) as named_surveys,
-                   COUNT(DISTINCT CASE WHEN user_id IS NULL THEN timestamp END) as anonymous_surveys
-            FROM (
-                SELECT user_id, timestamp, COUNT(*) as respuestas
-                FROM responses 
-                GROUP BY user_id, timestamp
-                HAVING respuestas = 6
-            )
-        """)
+        # Total de ENCUESTAS COMPLETADAS (ahora todas están en users)
+        cur.execute("SELECT COUNT(*) as total FROM users")
         result = cur.fetchone()
-        total_named = result['named_surveys'] if result else 0
-        total_anonymous = result['anonymous_surveys'] if result else 0
-        total_surveys = total_named + total_anonymous
+        total_surveys = result['total'] if result else 0
         
-        # Estadísticas por género CON PORCENTAJES
+        # Estadísticas por género CON PORCENTAJES (incluye anónimos como "Prefiero no decirlo")
         cur.execute("SELECT sexo, COUNT(*) as count FROM users GROUP BY sexo")
         gender_data = cur.fetchall()
         
@@ -213,19 +286,17 @@ def dashboard():
                 'percentage': round(percentage, 1)
             })
         
-        # Porcentaje anónimas
+        # Contar encuestas anónimas para el porcentaje
+        cur.execute("SELECT COUNT(*) as count FROM users WHERE nombre = 'Anónimo'")
+        result = cur.fetchone()
+        total_anonymous = result['count'] if result else 0
+        
+        # Porcentaje de encuestas anónimas
         anonymous_percentage = (total_anonymous / total_surveys * 100) if total_surveys > 0 else 0
         
-        # Estadísticas de CLASIFICACIÓN (leve, moderado, grave)
+        # Estadísticas de CLASIFICACIÓN (incluye anónimos)
         cur.execute("""
-            SELECT 
-                CASE 
-                    WHEN puntaje_total BETWEEN 0 AND 5 THEN 'Leve'
-                    WHEN puntaje_total BETWEEN 6 AND 11 THEN 'Moderado'
-                    WHEN puntaje_total BETWEEN 12 AND 18 THEN 'Grave'
-                    ELSE 'Sin clasificar'
-                END as clasificacion,
-                COUNT(*) as count
+            SELECT clasificacion, COUNT(*) as count
             FROM users 
             GROUP BY clasificacion
         """)
@@ -242,7 +313,7 @@ def dashboard():
                 'percentage': round(percentage, 1)
             })
         
-        # Estadísticas por pregunta
+        # Estadísticas por pregunta (sin cambios)
         cur.execute("""
             SELECT q.id, q.texto as pregunta,
                    o.id as option_id, o.texto as opcion, o.puntaje,
@@ -298,75 +369,6 @@ def dashboard():
                          anonymous_percentage=anonymous_percentage,
                          classification_stats=classification_stats,
                          questions_data=questions_data)
-
-@app.route('/api/submit-survey', methods=['POST'])
-def submit_survey():
-    data = request.json
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    try:
-        user_id = None
-        puntaje_total = 0
-        
-        # Calcular puntaje total primero
-        for question_id, option_id in data['responses'].items():
-            cur.execute("SELECT puntaje FROM options WHERE id = ?", (int(option_id),))
-            result = cur.fetchone()
-            if result:
-                puntaje_total += result['puntaje']
-        
-        # Determinar clasificación
-        if puntaje_total <= 5:
-            clasificacion = 'Leve'
-        elif puntaje_total <= 11:
-            clasificacion = 'Moderado'
-        else:
-            clasificacion = 'Grave'
-        
-        # Si no es anónima, crear usuario
-        if not data.get('is_anonymous'):
-            cur.execute("""
-                INSERT INTO users (nombre, email, edad, sexo, puntaje_total, clasificacion, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                data['nombre'],
-                data['email'],
-                data['edad'],
-                data['sexo'],
-                puntaje_total,
-                clasificacion,
-                datetime.now()
-            ))
-            user_id = cur.lastrowid
-        
-        # Insertar respuestas con puntajes
-        for question_id, option_id in data['responses'].items():
-            # Obtener puntaje de la opción
-            cur.execute("SELECT puntaje FROM options WHERE id = ?", (int(option_id),))
-            result = cur.fetchone()
-            puntaje_respuesta = result['puntaje'] if result else 0
-            
-            cur.execute("""
-                INSERT INTO responses (user_id, pregunta_id, respuesta, puntaje)
-                VALUES (?, ?, ?, ?)
-            """, (user_id, int(question_id), int(option_id), puntaje_respuesta))
-        
-        conn.commit()
-        print(f"✅ Encuesta guardada - Usuario: {user_id}, Puntaje: {puntaje_total}, Clasificación: {clasificacion}")
-        return jsonify({
-            'success': True, 
-            'puntaje': puntaje_total, 
-            'clasificacion': clasificacion
-        })
-        
-    except Exception as e:
-        conn.rollback()
-        print(f"❌ Error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-    finally:
-        cur.close()
-        conn.close()
 
 if __name__ == '__main__':
     print("🚀 Iniciando aplicación de encuestas (modo local)...")

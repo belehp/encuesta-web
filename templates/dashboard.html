@@ -44,7 +44,7 @@
     </div>
     <div class="card-body">
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-6 d-flex justify-content-center align-items-center">
                 <canvas id="genderChart" width="300" height="300"></canvas>
             </div>
             <div class="col-md-6">
@@ -71,12 +71,12 @@
 <!-- Clasificación de Riesgo CON GRÁFICO CIRCULAR -->
 {% if classification_stats %}
 <div class="card mb-4">
-    <div class="card-header bg-secondary  text-white">
+    <div class="card-header bg-secondary text-white">
         <h5 class="mb-0">⚠️ Clasificación de Riesgo de Violencia Intrafamiliar</h5>
     </div>
     <div class="card-body">
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-6 d-flex justify-content-center align-items-center">
                 <canvas id="riskChart" width="300" height="300"></canvas>
             </div>
             <div class="col-md-6">
@@ -102,7 +102,7 @@
 </div>
 {% endif %}
 
-<!-- Resultados por pregunta (SIN PUNTAJES) -->
+<!-- Resultados por pregunta -->
 <div class="row">
     {% for q_id, q_data in questions_data.items() %}
     <div class="col-md-6 mb-4">
@@ -180,16 +180,24 @@ const riskData = [
 // Función para crear gráfico circular
 function createPieChart(canvasId, data, title) {
     const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
+    if (!canvas || !data || data.length === 0) return;
     
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Limpiar canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
     const radius = Math.min(centerX, centerY) - 20;
     
     let currentAngle = -Math.PI / 2; // Empezar desde arriba
     
-    data.forEach(item => {
+    // Filtrar datos con valor > 0
+    const validData = data.filter(item => item.value > 0);
+    
+    validData.forEach(item => {
         const sliceAngle = (item.value / 100) * 2 * Math.PI;
         
         // Dibujar sector
@@ -224,6 +232,9 @@ function createPieChart(canvasId, data, title) {
 
 // Crear gráficos cuando la página cargue
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('Gender data:', genderData);
+    console.log('Risk data:', riskData);
+    
     createPieChart('genderChart', genderData, 'Distribución por Género');
     createPieChart('riskChart', riskData, 'Clasificación de Riesgo');
 });
