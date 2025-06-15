@@ -5,8 +5,11 @@ import os
 from datetime import datetime
 import json
 from urllib.parse import urlparse
+from flask_cors import CORS
 
 app = Flask(__name__)
+
+CORS(app)
 
 # Configuración de la base de datos para Railway
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -389,5 +392,6 @@ def submit_survey():
         conn.close()
 
 if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
     init_db()
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=port)
