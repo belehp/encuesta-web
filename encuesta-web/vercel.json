@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "run_local.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "run_local.py"
+    }
+  ],
+  "env": {
+    "PYTHONPATH": "."
+  }
+}

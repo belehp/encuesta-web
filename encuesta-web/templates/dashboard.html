@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Encuesta Web{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h2 class="display-5">📊 Dashboard de Resultados</h2>
+    <p class="lead">Estadísticas y resultados de todas las encuestas realizadas</p>
+</div>
+
+<!-- Estadísticas generales -->
+<div class="row mb-4">
+    <div class="col-md-4 mb-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body text-center">
+                <h3 class="card-title">{{ total_surveys }}</h3>
+                <p class="card-text">Total de Encuestas Completadas</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card bg-info text-white">
+            <div class="card-body text-center">
+                <h3 class="card-title">{{ "%.1f"|format(anonymous_percentage) }}%</h3>
+                <p class="card-text">Encuestas Anónimas</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body text-center">
+                <h3 class="card-title">{{ classification_stats|length }}</h3>
+                <p class="card-text">Niveles de Riesgo</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Estadísticas por género CON GRÁFICO CIRCULAR -->
+{% if gender_stats %}
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">👥 Distribución por Género</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <canvas id="genderChart" width="300" height="300"></canvas>
+            </div>
+            <div class="col-md-6">
+                <div class="d-flex flex-column justify-content-center h-100">
+                    <h6 class="mb-3">Leyenda:</h6>
+                    {% for stat in gender_stats %}
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="me-3" style="width: 20px; height: 20px; border-radius: 50%; background-color: 
+                            {% if stat.sexo == 'Masculino' %}#007bff
+                            {% elif stat.sexo == 'Femenino' %}#e91e63
+                            {% elif stat.sexo == 'Otro' %}#6c757d
+                            {% else %}#32cd32
+                            {% endif %};"></div>
+                        <span><strong>{{ stat.sexo }}:</strong> {{ stat.percentage }}% ({{ stat.count }} personas)</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Clasificación de Riesgo CON GRÁFICO CIRCULAR -->
+{% if classification_stats %}
+<div class="card mb-4">
+    <div class="card-header bg-warning text-white">
+        <h5 class="mb-0">⚠️ Clasificación de Riesgo de Violencia Intrafamiliar</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <canvas id="riskChart" width="300" height="300"></canvas>
+            </div>
+            <div class="col-md-6">
+                <div class="d-flex flex-column justify-content-center h-100">
+                    <h6 class="mb-3">Leyenda:</h6>
+                    {% for stat in classification_stats %}
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="me-3" style="width: 20px; height: 20px; border-radius: 50%; background-color: 
+                            {% if stat.clasificacion == 'Leve' %}#28a745
+                            {% elif stat.clasificacion == 'Moderado' %}#ffc107
+                            {% elif stat.clasificacion == 'Grave' %}#dc3545
+                            {% endif %};"></div>
+                        <span><strong>{{ stat.clasificacion }}:</strong> {{ stat.percentage }}% ({{ stat.count }} casos)</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <div class="alert alert-info mt-3">
+            <strong>ℹ️ Información:</strong> Esta clasificación ayuda a identificar el nivel de riesgo de violencia intrafamiliar para orientar la intervención profesional adecuada.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Resultados por pregunta (SIN PUNTAJES) -->
+<div class="row">
+    {% for q_id, q_data in questions_data.items() %}
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-light">
+                <h6 class="mb-0"><strong>Pregunta {{ q_id }}:</strong> {{ q_data.pregunta }}</h6>
+                <small class="text-muted">{{ q_data.total_responses }} respuestas</small>
+            </div>
+            <div class="card-body">
+                {% for opcion in q_data.opciones %}
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="small">{{ opcion.opcion }}</span>
+                        <span class="badge bg-primary">{{ "%.1f"|format(opcion.percentage) }}%</span>
+                    </div>
+                    <div class="progress" style="height: 8px;">
+                        <div class="progress-bar bg-info" 
+                             role="progressbar" 
+                             style="width: {{ opcion.percentage }}%"
+                             aria-valuenow="{{ opcion.percentage }}" 
+                             aria-valuemin="0" aria-valuemax="100">
+                        </div>
+                    </div>
+                    <small class="text-muted">{{ opcion.count }} respuestas</small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if not questions_data %}
+<div class="text-center py-5">
+    <div class="card">
+        <div class="card-body">
+            <h5>📭 No hay datos disponibles</h5>
+            <p class="text-muted">Aún no se han registrado respuestas a la encuesta.</p>
+            <a href="{{ url_for('survey') }}" class="btn btn-primary">Ser el primero en responder</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+// Datos para gráfico de género
+const genderData = [
+    {% for stat in gender_stats %}
+    {
+        label: '{{ stat.sexo }}',
+        value: {{ stat.percentage }},
+        color: {% if stat.sexo == 'Masculino' %}'#007bff'
+               {% elif stat.sexo == 'Femenino' %}'#e91e63'
+               {% elif stat.sexo == 'Otro' %}'#6c757d'
+               {% else %}'#32cd32'
+               {% endif %}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+// Datos para gráfico de riesgo
+const riskData = [
+    {% for stat in classification_stats %}
+    {
+        label: '{{ stat.clasificacion }}',
+        value: {{ stat.percentage }},
+        color: {% if stat.clasificacion == 'Leve' %}'#28a745'
+               {% elif stat.clasificacion == 'Moderado' %}'#ffc107'
+               {% elif stat.clasificacion == 'Grave' %}'#dc3545'
+               {% endif %}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+// Función para crear gráfico circular
+function createPieChart(canvasId, data, title) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = Math.min(centerX, centerY) - 20;
+    
+    let currentAngle = -Math.PI / 2; // Empezar desde arriba
+    
+    data.forEach(item => {
+        const sliceAngle = (item.value / 100) * 2 * Math.PI;
+        
+        // Dibujar sector
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle);
+        ctx.closePath();
+        ctx.fillStyle = item.color;
+        ctx.fill();
+        
+        // Dibujar borde
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Dibujar porcentaje en el centro del sector
+        if (item.value > 5) { // Solo mostrar si el sector es lo suficientemente grande
+            const textAngle = currentAngle + sliceAngle / 2;
+            const textX = centerX + Math.cos(textAngle) * (radius * 0.7);
+            const textY = centerY + Math.sin(textAngle) * (radius * 0.7);
+            
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(item.value.toFixed(1) + '%', textX, textY);
+        }
+        
+        currentAngle += sliceAngle;
+    });
+}
+
+// Crear gráficos cuando la página cargue
+document.addEventListener('DOMContentLoaded', function() {
+    createPieChart('genderChart', genderData, 'Distribución por Género');
+    createPieChart('riskChart', riskData, 'Clasificación de Riesgo');
+});
+</script>
+{% endblock %}

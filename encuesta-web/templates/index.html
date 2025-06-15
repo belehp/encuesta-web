@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Inicio - Encuesta Web{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="text-center mb-5">
+            <h1 class="display-4 mb-3">🏥 Detección de Violencia Intrafamiliar</h1>
+            <p class="lead">Herramienta de evaluación para el sistema público de salud (SAR, CESFAM, Urgencias)</p>
+            <div class="alert alert-info">
+                <strong>Confidencial:</strong> Esta encuesta ayuda a detectar situaciones de riesgo para brindar apoyo profesional adecuado.
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm hover-card">
+                    <div class="card-body text-center d-flex flex-column">
+                        <div class="mb-3">
+                            <i class="fas fa-clipboard-list fa-3x text-primary"></i>
+                        </div>
+                        <h5 class="card-title">Hacer Encuesta</h5>
+                        <p class="card-text flex-grow-1">
+                            Completa la evaluación de 6 preguntas para identificar posibles situaciones de riesgo.
+                            Puedes elegir responder de forma anónima.
+                        </p>
+                        <a href="{{ url_for('survey') }}" class="btn btn-primary btn-lg">
+                            Comenzar Encuesta
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm hover-card">
+                    <div class="card-body text-center d-flex flex-column">
+                        <div class="mb-3">
+                            <i class="fas fa-chart-bar fa-3x text-success"></i>
+                        </div>
+                        <h5 class="card-title">Ver Dashboard</h5>
+                        <p class="card-text flex-grow-1">
+                            Revisa las estadísticas y clasificaciones de riesgo de todas las evaluaciones realizadas.
+                        </p>
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-success btn-lg">
+                            Ver Resultados
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-5 text-center">
+            <div class="card bg-light">
+                <div class="card-body">
+                    <h6 class="card-title">ℹ️ Información</h6>
+                    <p class="card-text small mb-0">
+                        Esta encuesta es completamente segura. Tus datos personales están protegidos
+                        y puedes elegir responder de forma anónima si lo prefieres.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

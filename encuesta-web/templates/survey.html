@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Encuesta - Encuesta Web{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">📝 Encuesta</h3>
+            </div>
+            <div class="card-body">
+                <form id="surveyForm">
+                    <!-- Switch para encuesta anónima -->
+                    <div class="mb-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="anonymousSwitch">
+                            <label class="form-check-label" for="anonymousSwitch">
+                                <strong>Responder de forma anónima</strong>
+                            </label>
+                        </div>
+                        <small class="text-muted">
+                            Si activas esta opción, no necesitarás proporcionar datos personales.
+                        </small>
+                    </div>
+
+                    <!-- Datos personales (ocultos si es anónima) -->
+                    <div id="personalData">
+                        <h5 class="mb-3">👤 Datos Personales</h5>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="nombre" class="form-label">Nombre Completo *</label>
+                                <input type="text" class="form-control" id="nombre" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="email" class="form-label">Email *</label>
+                                <input type="email" class="form-control" id="email" required>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="edad" class="form-label">Edad *</label>
+                                <input type="number" class="form-control" id="edad" min="1" max="120" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="sexo" class="form-label">Sexo *</label>
+                                <select class="form-select" id="sexo" required>
+                                    <option value="">Selecciona una opción</option>
+                                    <option value="Masculino">Masculino</option>
+                                    <option value="Femenino">Femenino</option>
+                                    <option value="Otro">Otro</option>
+                                    <option value="Prefiero no decirlo">Prefiero no decirlo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <hr class="my-4">
+                    </div>
+
+                    <!-- Preguntas -->
+                    <h5 class="mb-3">❓ Preguntas</h5>
+                    {% for question in questions %}
+                    <div class="mb-4">
+                        <h6 class="fw-bold">{{ loop.index }}. {{ question.pregunta }}</h6>
+                        <div class="mt-2">
+                            {% for option in question.opciones %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" 
+                                       name="question_{{ question.id }}" 
+                                       id="option_{{ option.id }}" 
+                                       value="{{ option.id }}" required>
+                                <label class="form-check-label" for="option_{{ option.id }}">
+                                    {{ option.texto }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            Enviar Encuesta
+                        </button>
+                        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                            Cancelar
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmación -->
+<div class="modal fade" id="successModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">✅ ¡Encuesta Enviada!</h5>
+            </div>
+            <div class="modal-body">
+                <p>Gracias por participar en nuestra encuesta. Tus respuestas han sido registradas correctamente.</p>
+            </div>
+            <div class="modal-footer">
+                <a href="{{ url_for('index') }}" class="btn btn-primary">Volver al Inicio</a>
+                <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary">Ver Dashboard</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
