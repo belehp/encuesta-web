@@ -87,29 +87,6 @@ http://127.0.0.1:5000
 
 ---
 
-## 📁 Estructura del Proyecto
-
-```text
-encuesta-web/
-├── run_local.py           # Aplicación principal Flask
-├── crear_db_nueva.py      # Script para crear la base de datos
-├── requirements.txt       # Dependencias Python
-├── ejecutar.bat           # Script de ejecución (Windows)
-├── .env                   # Variables de entorno (no se sube)
-├── templates/             # Archivos HTML
-│   ├── base.html
-│   ├── index.html
-│   ├── survey.html
-│   ├── dashboard.html
-│   └── mision.html
-├── static/                # Archivos estáticos
-│   ├── style.css
-│   └── script.js
-└── survey_local.db        # Base de datos local (si usas SQLite)
-```
-
----
-
 ## 🔐 Ignorar archivo `.env` (importante)
 
 Agrega esto a tu archivo `.gitignore` para evitar subir el `.env`:
@@ -170,10 +147,8 @@ Edita `static/style.css`.
 
 ## 🚀 Deploy
 
-Puedes hacer deploy con:
-
 - **Railway** → base de datos PostgreSQL
-- **Vercel / Render / Heroku** → backend Flask
+- **Vercel** → backend Flask
 
 ---
 
