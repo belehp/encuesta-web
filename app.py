@@ -395,7 +395,8 @@ def submit_survey():
             return jsonify({'success': False, 'error': 'No data received'}), 400
         
         conn = get_db_connection()
-        cur = conn.cursor()
+        # IMPORTANTE: Usar RealDictCursor para PostgreSQL para evitar el error de tuple
+        cur = conn.cursor(cursor_factory=RealDictCursor) if not USE_SQLITE else conn.cursor()
         
         try:
             user_id = None
@@ -409,11 +410,14 @@ def submit_survey():
             for question_id, option_id in data['responses'].items():
                 if USE_SQLITE:
                     cur.execute("SELECT puntaje FROM options WHERE id = ?", (int(option_id),))
+                    result = cur.fetchone()
+                    if result:
+                        puntaje_total += result['puntaje']
                 else:
                     cur.execute("SELECT puntaje FROM options WHERE id = %s", (int(option_id),))
-                result = cur.fetchone()
-                if result:
-                    puntaje_total += result[0] if USE_SQLITE else result['puntaje']
+                    result = cur.fetchone()
+                    if result:
+                        puntaje_total += result['puntaje']
             
             # Determinar clasificación
             if puntaje_total <= 5:
@@ -454,7 +458,8 @@ def submit_survey():
                         clasificacion,
                         datetime.now()
                     ))
-                    user_id = cur.fetchone()[0]
+                    result = cur.fetchone()
+                    user_id = result['id']
             else:
                 # Para encuestas con datos personales
                 if USE_SQLITE:
@@ -485,17 +490,20 @@ def submit_survey():
                         clasificacion,
                         datetime.now()
                     ))
-                    user_id = cur.fetchone()[0]
+                    result = cur.fetchone()
+                    user_id = result['id']
             
             # Insertar respuestas con puntajes
             for question_id, option_id in data['responses'].items():
                 # Obtener puntaje de la opción
                 if USE_SQLITE:
                     cur.execute("SELECT puntaje FROM options WHERE id = ?", (int(option_id),))
+                    result = cur.fetchone()
+                    puntaje_respuesta = result['puntaje'] if result else 0
                 else:
                     cur.execute("SELECT puntaje FROM options WHERE id = %s", (int(option_id),))
-                result = cur.fetchone()
-                puntaje_respuesta = result[0] if USE_SQLITE and result else (result['puntaje'] if result else 0)
+                    result = cur.fetchone()
+                    puntaje_respuesta = result['puntaje'] if result else 0
                 
                 if USE_SQLITE:
                     cur.execute("""
