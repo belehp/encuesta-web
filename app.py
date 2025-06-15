@@ -11,7 +11,7 @@ app = Flask(__name__)
 
 CORS(app)
 
-# Configuración de la base de datos para Railway
+# Configuración de la base de datos para Railway/Render
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # Si no hay DATABASE_URL (desarrollo local), usar SQLite como fallback
@@ -20,6 +20,9 @@ if not DATABASE_URL:
     USE_SQLITE = True
 else:
     USE_SQLITE = False
+    # Fix para Render.com - cambiar postgres:// a postgresql://
+    if DATABASE_URL.startswith('postgres://'):
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
 def get_db_connection():
     if USE_SQLITE:
@@ -127,7 +130,8 @@ def init_db():
 
         # Insertar preguntas de ejemplo si no existen
         cur.execute("SELECT COUNT(*) FROM questions")
-        count = cur.fetchone()[0] if USE_SQLITE else cur.fetchone()[0]
+        count_result = cur.fetchone()
+        count = count_result[0] if USE_SQLITE else count_result[0]
         
         if count == 0:
             questions = [
@@ -143,7 +147,7 @@ def init_db():
                 if USE_SQLITE:
                     cur.execute("INSERT INTO questions (texto) VALUES (?)", (question,))
                 else:
-                    cur.execute("INSERT INTO questions (id, texto) VALUES (%s, %s)", (i, question))
+                    cur.execute("INSERT INTO questions (texto) VALUES (%s)", (question,))
             
             # Insertar opciones para cada pregunta con puntajes
             options = [
@@ -193,8 +197,9 @@ def init_db():
                               (question_id, texto, puntaje))
         
         conn.commit()
+        print("✅ Base de datos inicializada correctamente")
     except Exception as e:
-        print(f"Error inicializando DB: {e}")
+        print(f"❌ Error inicializando DB: {e}")
         conn.rollback()
     finally:
         cur.close()
@@ -213,33 +218,44 @@ def survey():
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor) if not USE_SQLITE else conn.cursor()
     
-    # Obtener preguntas y opciones
-    if USE_SQLITE:
-        cur.execute("SELECT id, texto as pregunta FROM questions ORDER BY id")
-        questions_data = cur.fetchall()
-        
+    try:
+        # Obtener preguntas y opciones
+        if USE_SQLITE:
+            cur.execute("SELECT id, texto as pregunta FROM questions ORDER BY id")
+            questions_data = cur.fetchall()
+            
+            questions = []
+            for q in questions_data:
+                cur.execute("SELECT id, texto FROM options WHERE pregunta_id = ? ORDER BY id", (q['id'],))
+                opciones = cur.fetchall()
+                questions.append({
+                    'id': q['id'],
+                    'pregunta': q['pregunta'],
+                    'opciones': [{'id': o['id'], 'texto': o['texto']} for o in opciones]
+                })
+        else:
+            cur.execute("""
+                SELECT q.id, q.texto as pregunta, 
+                       array_agg(json_build_object('id', o.id, 'texto', o.texto) ORDER BY o.id) as opciones
+                FROM questions q
+                LEFT JOIN options o ON q.id = o.pregunta_id
+                GROUP BY q.id, q.texto
+                ORDER BY q.id
+            """)
+            questions_raw = cur.fetchall()
+            questions = []
+            for q in questions_raw:
+                questions.append({
+                    'id': q['id'],
+                    'pregunta': q['pregunta'],
+                    'opciones': q['opciones'] if q['opciones'] else []
+                })
+    except Exception as e:
+        print(f"❌ Error en survey: {e}")
         questions = []
-        for q in questions_data:
-            cur.execute("SELECT id, texto FROM options WHERE pregunta_id = ? ORDER BY id", (q['id'],))
-            opciones = cur.fetchall()
-            questions.append({
-                'id': q['id'],
-                'pregunta': q['pregunta'],
-                'opciones': [{'id': o['id'], 'texto': o['texto']} for o in opciones]
-            })
-    else:
-        cur.execute("""
-            SELECT q.id, q.texto as pregunta, 
-                   array_agg(json_build_object('id', o.id, 'texto', o.texto) ORDER BY o.id) as opciones
-            FROM questions q
-            LEFT JOIN options o ON q.id = o.pregunta_id
-            GROUP BY q.id, q.texto
-            ORDER BY q.id
-        """)
-        questions = cur.fetchall()
-    
-    cur.close()
-    conn.close()
+    finally:
+        cur.close()
+        conn.close()
     
     return render_template('survey.html', questions=questions)
 
@@ -249,71 +265,54 @@ def dashboard():
     cur = conn.cursor(cursor_factory=RealDictCursor) if not USE_SQLITE else conn.cursor()
     
     try:
-        # Total de ENCUESTAS COMPLETADAS (ahora todas están en users)
+        # Total de ENCUESTAS COMPLETADAS
         cur.execute("SELECT COUNT(*) as total FROM users")
         result = cur.fetchone()
         total_surveys = result[0] if USE_SQLITE else result['total']
         
-        # Estadísticas por género CON PORCENTAJES (incluye anónimos como "Prefiero no decirlo")
-        if USE_SQLITE:
-            cur.execute("SELECT sexo, COUNT(*) as count FROM users GROUP BY sexo")
-            gender_data = cur.fetchall()
-        else:
-            cur.execute("SELECT sexo, COUNT(*) as count FROM users GROUP BY sexo")
-            gender_data = cur.fetchall()
+        # Estadísticas por género CON PORCENTAJES
+        cur.execute("SELECT sexo, COUNT(*) as count FROM users GROUP BY sexo")
+        gender_data = cur.fetchall()
         
         # Calcular porcentajes de género
-        total_users = sum(row['count'] for row in gender_data)
+        total_users = sum(row['count'] if not USE_SQLITE else row[1] for row in gender_data)
         gender_stats = []
         for row in gender_data:
-            percentage = (row['count'] / total_users * 100) if total_users > 0 else 0
+            count = row['count'] if not USE_SQLITE else row[1]
+            sexo = row['sexo'] if not USE_SQLITE else row[0]
+            percentage = (count / total_users * 100) if total_users > 0 else 0
             gender_stats.append({
-                'sexo': row['sexo'],
-                'count': row['count'],
+                'sexo': sexo,
+                'count': count,
                 'percentage': round(percentage, 1)
             })
         
-        # Contar encuestas anónimas para el porcentaje
-        if USE_SQLITE:
-            cur.execute("SELECT COUNT(*) as count FROM users WHERE nombre = 'Anónimo'")
-            result = cur.fetchone()
-            total_anonymous = result['count'] if result else 0
-        else:
-            cur.execute("SELECT COUNT(*) as count FROM users WHERE nombre = 'Anónimo'")
-            result = cur.fetchone()
-            total_anonymous = result['count'] if result else 0
+        # Contar encuestas anónimas
+        cur.execute("SELECT COUNT(*) as count FROM users WHERE nombre = 'Anónimo'")
+        result = cur.fetchone()
+        total_anonymous = result['count'] if not USE_SQLITE else result[0]
         
         # Porcentaje de encuestas anónimas
         anonymous_percentage = (total_anonymous / total_surveys * 100) if total_surveys > 0 else 0
         
-        # Estadísticas de CLASIFICACIÓN (incluye anónimos)
-        if USE_SQLITE:
-            cur.execute("""
-                SELECT clasificacion, COUNT(*) as count
-                FROM users 
-                GROUP BY clasificacion
-            """)
-            classification_data = cur.fetchall()
-        else:
-            cur.execute("""
-                SELECT clasificacion, COUNT(*) as count
-                FROM users 
-                GROUP BY clasificacion
-            """)
-            classification_data = cur.fetchall()
+        # Estadísticas de CLASIFICACIÓN
+        cur.execute("SELECT clasificacion, COUNT(*) as count FROM users GROUP BY clasificacion")
+        classification_data = cur.fetchall()
         
         # Calcular porcentajes de clasificación
-        total_classified = sum(row['count'] for row in classification_data)
+        total_classified = sum(row['count'] if not USE_SQLITE else row[1] for row in classification_data)
         classification_stats = []
         for row in classification_data:
-            percentage = (row['count'] / total_classified * 100) if total_classified > 0 else 0
+            count = row['count'] if not USE_SQLITE else row[1]
+            clasificacion = row['clasificacion'] if not USE_SQLITE else row[0]
+            percentage = (count / total_classified * 100) if total_classified > 0 else 0
             classification_stats.append({
-                'clasificacion': row['clasificacion'],
-                'count': row['count'],
+                'clasificacion': clasificacion,
+                'count': count,
                 'percentage': round(percentage, 1)
             })
         
-        # Estadísticas por pregunta (sin cambios)
+        # Estadísticas por pregunta
         if USE_SQLITE:
             cur.execute("""
                 SELECT q.id, q.texto as pregunta,
@@ -342,10 +341,13 @@ def dashboard():
         # Organizar estadísticas por pregunta
         questions_data = {}
         for stat in question_stats:
-            q_id = stat['id'] if not USE_SQLITE else stat[0]
-            pregunta = stat['pregunta'] if not USE_SQLITE else stat[1]
-            opcion = stat['opcion'] if not USE_SQLITE else stat[3]
-            count = stat['count'] if not USE_SQLITE else stat[4]
+            if USE_SQLITE:
+                q_id, pregunta, option_id, opcion, puntaje, count = stat
+            else:
+                q_id = stat['id']
+                pregunta = stat['pregunta']
+                opcion = stat['opcion']
+                count = stat['count']
             
             if q_id not in questions_data:
                 questions_data[q_id] = {
@@ -356,7 +358,6 @@ def dashboard():
             
             questions_data[q_id]['opciones'].append({
                 'opcion': opcion,
-                'puntaje': stat['puntaje'] if not USE_SQLITE else stat[4],
                 'count': count
             })
             questions_data[q_id]['total_responses'] += count
@@ -365,10 +366,10 @@ def dashboard():
         for q_data in questions_data.values():
             total = q_data['total_responses']
             for opcion in q_data['opciones']:
-                opcion['percentage'] = (opcion['count'] / total * 100) if total > 0 else 0
+                opcion['percentage'] = round((opcion['count'] / total * 100), 1) if total > 0 else 0
         
     except Exception as e:
-        print(f"Error en dashboard: {e}")
+        print(f"❌ Error en dashboard: {e}")
         total_surveys = 0
         gender_stats = []
         anonymous_percentage = 0
@@ -382,141 +383,189 @@ def dashboard():
     return render_template('dashboard.html', 
                          total_surveys=total_surveys,
                          gender_stats=gender_stats,
-                         anonymous_percentage=anonymous_percentage,
+                         anonymous_percentage=round(anonymous_percentage, 1),
                          classification_stats=classification_stats,
                          questions_data=questions_data)
 
 @app.route('/api/submit-survey', methods=['POST'])
 def submit_survey():
-    data = request.json
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
     try:
-        user_id = None
-        puntaje_total = 0
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'error': 'No data received'}), 400
         
-        # Calcular puntaje total primero
-        for question_id, option_id in data['responses'].items():
-            if USE_SQLITE:
-                cur.execute("SELECT puntaje FROM options WHERE id = ?", (int(option_id),))
-            else:
-                cur.execute("SELECT puntaje FROM options WHERE id = %s", (int(option_id),))
-            result = cur.fetchone()
-            if result:
-                puntaje_total += result[0] if USE_SQLITE else result['puntaje']
+        conn = get_db_connection()
+        cur = conn.cursor()
         
-        # Determinar clasificación
-        if puntaje_total <= 5:
-            clasificacion = 'Leve'
-        elif puntaje_total <= 11:
-            clasificacion = 'Moderado'
-        else:
-            clasificacion = 'Grave'
-        
-        # CREAR USUARIO SIEMPRE (anónimo o no)
-        if data.get('is_anonymous'):
-            # Para encuestas anónimas, usar datos genéricos
-            if USE_SQLITE:
-                cur.execute("""
-                    INSERT INTO users (nombre, email, edad, sexo, puntaje_total, clasificacion, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    "Anónimo",
-                    "anonimo@encuesta.com",
-                    0,  # Edad genérica
-                    "Prefiero no decirlo",  # Género para anónimos
-                    puntaje_total,
-                    clasificacion,
-                    datetime.now()
-                ))
-                user_id = cur.lastrowid
-            else:
-                cur.execute("""
-                    INSERT INTO users (nombre, email, edad, sexo, puntaje_total, clasificacion, timestamp)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (
-                    "Anónimo",
-                    "anonimo@encuesta.com",
-                    0,  # Edad genérica
-                    "Prefiero no decirlo",  # Género para anónimos
-                    puntaje_total,
-                    clasificacion,
-                    datetime.now()
-                ))
-                user_id = cur.fetchone()[0]
-        else:
-            # Para encuestas con datos personales
-            if USE_SQLITE:
-                cur.execute("""
-                    INSERT INTO users (nombre, email, edad, sexo, puntaje_total, clasificacion, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    data['nombre'],
-                    data['email'],
-                    data['edad'],
-                    data['sexo'],
-                    puntaje_total,
-                    clasificacion,
-                    datetime.now()
-                ))
-                user_id = cur.lastrowid
-            else:
-                cur.execute("""
-                    INSERT INTO users (nombre, email, edad, sexo, puntaje_total, clasificacion, timestamp)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (
-                    data['nombre'],
-                    data['email'],
-                    data['edad'],
-                    data['sexo'],
-                    puntaje_total,
-                    clasificacion,
-                    datetime.now()
-                ))
-                user_id = cur.fetchone()[0]
-        
-        # Insertar respuestas con puntajes
-        for question_id, option_id in data['responses'].items():
-            # Obtener puntaje de la opción
-            if USE_SQLITE:
-                cur.execute("SELECT puntaje FROM options WHERE id = ?", (int(option_id),))
-            else:
-                cur.execute("SELECT puntaje FROM options WHERE id = %s", (int(option_id),))
-            result = cur.fetchone()
-            puntaje_respuesta = result[0] if USE_SQLITE and result else (result['puntaje'] if result else 0)
+        try:
+            user_id = None
+            puntaje_total = 0
             
-            if USE_SQLITE:
-                cur.execute("""
-                    INSERT INTO responses (user_id, pregunta_id, respuesta, puntaje)
-                    VALUES (?, ?, ?, ?)
-                """, (user_id, int(question_id), int(option_id), puntaje_respuesta))
+            # Validar que hay respuestas
+            if 'responses' not in data or not data['responses']:
+                return jsonify({'success': False, 'error': 'No responses provided'}), 400
+            
+            # Calcular puntaje total primero
+            for question_id, option_id in data['responses'].items():
+                if USE_SQLITE:
+                    cur.execute("SELECT puntaje FROM options WHERE id = ?", (int(option_id),))
+                else:
+                    cur.execute("SELECT puntaje FROM options WHERE id = %s", (int(option_id),))
+                result = cur.fetchone()
+                if result:
+                    puntaje_total += result[0] if USE_SQLITE else result['puntaje']
+            
+            # Determinar clasificación
+            if puntaje_total <= 5:
+                clasificacion = 'Leve'
+            elif puntaje_total <= 11:
+                clasificacion = 'Moderado'
             else:
-                cur.execute("""
-                    INSERT INTO responses (user_id, pregunta_id, respuesta, puntaje)
-                    VALUES (%s, %s, %s, %s)
-                """, (user_id, int(question_id), int(option_id), puntaje_respuesta))
-        
-        conn.commit()
-        return jsonify({
-            'success': True, 
-            'puntaje': puntaje_total, 
-            'clasificacion': clasificacion
-        })
-        
+                clasificacion = 'Grave'
+            
+            # CREAR USUARIO SIEMPRE (anónimo o no)
+            if data.get('is_anonymous'):
+                # Para encuestas anónimas, usar datos genéricos
+                if USE_SQLITE:
+                    cur.execute("""
+                        INSERT INTO users (nombre, email, edad, sexo, puntaje_total, clasificacion, timestamp)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        "Anónimo",
+                        "anonimo@encuesta.com",
+                        0,
+                        "Prefiero no decirlo",
+                        puntaje_total,
+                        clasificacion,
+                        datetime.now()
+                    ))
+                    user_id = cur.lastrowid
+                else:
+                    cur.execute("""
+                        INSERT INTO users (nombre, email, edad, sexo, puntaje_total, clasificacion, timestamp)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (
+                        "Anónimo",
+                        "anonimo@encuesta.com",
+                        0,
+                        "Prefiero no decirlo",
+                        puntaje_total,
+                        clasificacion,
+                        datetime.now()
+                    ))
+                    user_id = cur.fetchone()[0]
+            else:
+                # Para encuestas con datos personales
+                if USE_SQLITE:
+                    cur.execute("""
+                        INSERT INTO users (nombre, email, edad, sexo, puntaje_total, clasificacion, timestamp)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        data.get('nombre', ''),
+                        data.get('email', ''),
+                        data.get('edad', 0),
+                        data.get('sexo', ''),
+                        puntaje_total,
+                        clasificacion,
+                        datetime.now()
+                    ))
+                    user_id = cur.lastrowid
+                else:
+                    cur.execute("""
+                        INSERT INTO users (nombre, email, edad, sexo, puntaje_total, clasificacion, timestamp)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (
+                        data.get('nombre', ''),
+                        data.get('email', ''),
+                        data.get('edad', 0),
+                        data.get('sexo', ''),
+                        puntaje_total,
+                        clasificacion,
+                        datetime.now()
+                    ))
+                    user_id = cur.fetchone()[0]
+            
+            # Insertar respuestas con puntajes
+            for question_id, option_id in data['responses'].items():
+                # Obtener puntaje de la opción
+                if USE_SQLITE:
+                    cur.execute("SELECT puntaje FROM options WHERE id = ?", (int(option_id),))
+                else:
+                    cur.execute("SELECT puntaje FROM options WHERE id = %s", (int(option_id),))
+                result = cur.fetchone()
+                puntaje_respuesta = result[0] if USE_SQLITE and result else (result['puntaje'] if result else 0)
+                
+                if USE_SQLITE:
+                    cur.execute("""
+                        INSERT INTO responses (user_id, pregunta_id, respuesta, puntaje, timestamp)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (user_id, int(question_id), int(option_id), puntaje_respuesta, datetime.now()))
+                else:
+                    cur.execute("""
+                        INSERT INTO responses (user_id, pregunta_id, respuesta, puntaje, timestamp)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (user_id, int(question_id), int(option_id), puntaje_respuesta, datetime.now()))
+            
+            conn.commit()
+            print(f"✅ Encuesta guardada - Usuario: {user_id}, Puntaje: {puntaje_total}, Clasificación: {clasificacion}")
+            
+            return jsonify({
+                'success': True, 
+                'puntaje': puntaje_total, 
+                'clasificacion': clasificacion
+            })
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Error en submit_survey: {e}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+        finally:
+            cur.close()
+            conn.close()
+            
     except Exception as e:
-        conn.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
-    finally:
+        print(f"❌ Error general en submit_survey: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+# Endpoint para debugging
+@app.route('/api/debug')
+def debug():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        debug_info = {
+            'database_type': 'SQLite' if USE_SQLITE else 'PostgreSQL',
+            'database_url': DATABASE_URL if not USE_SQLITE else 'Local SQLite'
+        }
+        
+        # Contar registros
+        cur.execute("SELECT COUNT(*) FROM questions")
+        debug_info['questions_count'] = cur.fetchone()[0]
+        
+        cur.execute("SELECT COUNT(*) FROM options")
+        debug_info['options_count'] = cur.fetchone()[0]
+        
+        cur.execute("SELECT COUNT(*) FROM users")
+        debug_info['users_count'] = cur.fetchone()[0]
+        
+        cur.execute("SELECT COUNT(*) FROM responses")
+        debug_info['responses_count'] = cur.fetchone()[0]
+        
         cur.close()
         conn.close()
+        
+        return jsonify(debug_info)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     init_db()
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False)
 
+# Para producción
 if __name__ != "__main__":
     init_db()
