@@ -51,7 +51,7 @@ pip install -r requirements.txt
 
 #### Opción A: Usando el script automático (Windows)
 \`\`\`cmd
-ejecutar_nuevo.bat
+ejecutar.bat
 \`\`\`
 
 #### Opción B: Manual
