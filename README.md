@@ -30,7 +30,7 @@ Una aplicación web desarrollada con **Python Flask** para detectar y prevenir l
 ### 1. Clonar el proyecto
 
 ```bash
-git clone https://github.com/usuario/encuesta-web.git
+git clone https://github.com/belehp/encuesta-web.git
 cd encuesta-web
 ```
 
